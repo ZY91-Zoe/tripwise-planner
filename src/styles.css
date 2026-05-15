@@ -586,12 +586,14 @@ select:focus,
 .timeline {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  align-items: stretch;
   gap: 12px;
 }
 
 .day-card {
-  display: grid;
-  gap: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   min-height: 250px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -604,6 +606,7 @@ select:focus,
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+  flex: 0 0 auto;
 }
 
 .day-head h3 {
@@ -624,11 +627,12 @@ select:focus,
 
 .activity-list {
   display: grid;
-  gap: 10px;
+  align-content: start;
+  gap: 9px;
   margin: 0;
   padding-left: 18px;
   color: var(--muted);
-  line-height: 1.55;
+  line-height: 1.45;
 }
 
 .activity-list li::marker {
@@ -663,7 +667,7 @@ a.activity-title:hover {
 .activity-source {
   display: inline-flex;
   width: fit-content;
-  margin-top: 6px;
+  margin-top: 4px;
   padding: 3px 7px;
   border-radius: 999px;
   background: var(--sky);
@@ -675,7 +679,10 @@ a.activity-title:hover {
 
 .day-detail-button {
   width: 100%;
-  min-height: 38px;
+  height: 40px;
+  min-height: 40px;
+  margin-top: auto;
+  flex: 0 0 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--soft);
@@ -684,6 +691,7 @@ a.activity-title:hover {
 }
 
 .day-transfer-summary {
+  flex: 0 0 auto;
   padding: 8px 10px;
   border-radius: 8px;
   background: #f2fafb;
