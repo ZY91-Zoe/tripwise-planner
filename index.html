@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TripWise Planner</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="planner-panel" aria-label="旅行规划输入">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">
+            <span></span>
+          </div>
+          <div>
+            <p class="eyebrow">TripWise Planner</p>
+            <h1>多城市自动旅行规划</h1>
+          </div>
+        </div>
+
+        <form id="trip-form" class="trip-form">
+          <div class="field-row">
+            <label>
+              <span>出发地</span>
+              <input id="origin" name="origin" value="杭州" autocomplete="off" />
+            </label>
+            <label>
+              <span>总预算</span>
+              <input id="budget" name="budget" type="number" min="800" step="100" value="6800" />
+            </label>
+          </div>
+
+          <div class="field-row">
+            <label>
+              <span>开始日期</span>
+              <input id="start-date" name="startDate" type="date" value="2026-10-01" />
+            </label>
+            <label>
+              <span>结束日期</span>
+              <input id="end-date" name="endDate" type="date" value="2026-10-07" />
+            </label>
+          </div>
+
+          <label>
+            <span>目的地</span>
+            <div class="tag-input">
+              <div id="destination-tags" class="destination-tags" aria-live="polite"></div>
+              <input
+                id="destination-input"
+                type="text"
+                placeholder="输入城市后按 Enter，例如 佛山"
+                autocomplete="off"
+              />
+            </div>
+          </label>
+
+          <label>
+            <span>已定酒店/住宿名</span>
+            <input id="hotel-name" name="hotelName" placeholder="可选，例如 喀什古城丽枫酒店" autocomplete="off" />
+          </label>
+
+          <div class="field-row">
+            <label>
+              <span>旅行风格</span>
+              <select id="priority" name="priority">
+                <option value="balanced">均衡优先</option>
+                <option value="cheap">省钱优先</option>
+                <option value="fast">省时间优先</option>
+                <option value="comfort">少折腾优先</option>
+              </select>
+            </label>
+            <label>
+              <span>游玩节奏</span>
+              <select id="pace" name="pace">
+                <option value="relaxed">舒适</option>
+                <option value="standard" selected>标准</option>
+                <option value="intense">紧凑</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset class="toggle-group">
+            <legend>额外偏好</legend>
+            <label><input type="checkbox" name="food" data-pref checked /> 美食优先</label>
+            <label><input type="checkbox" name="culture" data-pref checked /> 城市文化</label>
+            <label><input type="checkbox" name="nature" data-pref /> 海边/自然</label>
+          </fieldset>
+
+          <fieldset class="toggle-group transport-group">
+            <legend>交通方式</legend>
+            <label><input type="checkbox" name="transportMode" value="rail" checked /> 高铁</label>
+            <label><input type="checkbox" name="transportMode" value="flight" checked /> 航班</label>
+            <label><input type="checkbox" name="transportMode" value="driving" checked /> 自驾</label>
+            <label><input type="checkbox" name="transportMode" value="bus" /> 大巴</label>
+          </fieldset>
+
+          <button class="primary-button" type="submit">
+            <span class="button-icon" aria-hidden="true">↻</span>
+            <span id="submit-label">生成旅行方案</span>
+          </button>
+        </form>
+
+        <div class="data-note">
+          <strong>上线 MVP 状态</strong>
+          <span id="backend-status">正在连接规划服务...</span>
+        </div>
+      </section>
+
+      <section class="result-panel" aria-label="旅行规划结果">
+        <div class="overview-card">
+          <div class="map-visual">
+            <button id="map-open-button" class="map-open-button" type="button" aria-label="查看路线地图详情">
+              查看地图
+            </button>
+            <img src="./assets/route-map.png" alt="粤港澳旅行路线视觉图" />
+            <div class="map-overlay">
+              <p>推荐路线</p>
+              <strong id="route-title">杭州 → 广州 → 茂名 → 澳门 → 深圳 → 杭州</strong>
+            </div>
+          </div>
+          <div class="summary-grid">
+            <div>
+              <span>行程天数</span>
+              <strong id="summary-days">7 天</strong>
+            </div>
+            <div>
+              <span>预计花费</span>
+              <strong id="summary-cost">¥5,980</strong>
+            </div>
+            <div>
+              <span>交通时间</span>
+              <strong id="summary-time">17.5 小时</strong>
+            </div>
+            <div>
+              <span>方案评分</span>
+              <strong id="summary-score">92</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="tabs" role="tablist" aria-label="方案类型">
+          <button class="tab is-active" data-plan="balanced" type="button">均衡</button>
+          <button class="tab" data-plan="cheap" type="button">省钱</button>
+          <button class="tab" data-plan="fast" type="button">省时间</button>
+        </div>
+
+        <div id="plan-detail" class="plan-detail"></div>
+      </section>
+    </main>
+
+    <div id="detail-modal" class="detail-modal is-hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <button class="modal-backdrop" type="button" data-close-modal aria-label="关闭详情"></button>
+      <section class="modal-panel">
+        <button class="modal-close" type="button" data-close-modal aria-label="关闭">×</button>
+        <p id="modal-kicker" class="section-kicker"></p>
+        <h2 id="modal-title"></h2>
+        <div id="modal-body" class="modal-body"></div>
+      </section>
+    </div>
+
+    <template id="day-template">
+      <article class="day-card">
+        <div class="day-head">
+          <div>
+            <p class="day-date"></p>
+            <h3></h3>
+          </div>
+          <span class="day-badge"></span>
+        </div>
+        <ul class="activity-list"></ul>
+        <button class="day-detail-button" type="button">查看当天详情</button>
+      </article>
+    </template>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
