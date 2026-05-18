@@ -19,25 +19,54 @@
           </div>
         </div>
 
+        <section class="quick-planner" aria-label="一句话规划入口">
+          <label for="quick-trip-input">
+            <span>一句话生成</span>
+            <textarea
+              id="quick-trip-input"
+              rows="3"
+              placeholder="例如：我想从杭州出发，7天，预算6000，想去广东玩"
+            ></textarea>
+          </label>
+          <div class="quick-actions">
+            <button type="button" class="secondary-button" id="quick-fill-button">智能填写</button>
+            <button
+              type="button"
+              class="text-example"
+              data-example="我想从杭州出发，10月1日到10月7日，预算6000，想去广州、深圳、澳门玩，美食优先"
+            >
+              粤港澳 7 天
+            </button>
+            <button
+              type="button"
+              class="text-example"
+              data-example="我想从杭州出发，7天，预算12000，想去新疆玩，节奏舒适，喜欢自然"
+            >
+              新疆慢游
+            </button>
+          </div>
+          <p id="quick-fill-status" class="quick-fill-status" aria-live="polite"></p>
+        </section>
+
         <form id="trip-form" class="trip-form">
           <div class="field-row">
             <label>
               <span>出发地</span>
-              <input id="origin" name="origin" value="杭州" autocomplete="off" />
+              <input id="origin" name="origin" value="杭州" placeholder="例如 杭州" autocomplete="off" />
             </label>
             <label>
-              <span>总预算</span>
-              <input id="budget" name="budget" type="number" min="800" step="100" value="6800" />
+              <span>总预算（元）</span>
+              <input id="budget" name="budget" type="number" min="800" step="100" value="6800" placeholder="例如 6000" />
             </label>
           </div>
 
           <div class="field-row">
             <label>
-              <span>开始日期</span>
+              <span>开始日期（年/月/日）</span>
               <input id="start-date" name="startDate" type="date" value="2026-10-01" />
             </label>
             <label>
-              <span>结束日期</span>
+              <span>结束日期（年/月/日）</span>
               <input id="end-date" name="endDate" type="date" value="2026-10-07" />
             </label>
           </div>
@@ -49,10 +78,11 @@
               <input
                 id="destination-input"
                 type="text"
-                placeholder="输入城市后按 Enter，例如 佛山"
+                placeholder="输入一个或多个城市，按 Enter 添加，例如 广州、深圳、澳门"
                 autocomplete="off"
               />
             </div>
+            <small class="field-help">可一次输入多个目的地，用顿号、逗号或空格分隔。</small>
           </label>
 
           <label>
@@ -102,8 +132,8 @@
         </form>
 
         <div class="data-note">
-          <strong>上线 MVP 状态</strong>
-          <span id="backend-status">正在连接规划服务...</span>
+          <strong>规划服务状态</strong>
+          <span id="backend-status">可以直接生成，也可以用一句话先自动填写。</span>
         </div>
       </section>
 

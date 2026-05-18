@@ -33,7 +33,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, {
         ok: true,
         service: "tripwise-planner",
-        version: "0.5.0",
+        version: "0.6.0",
         liveDataConfigured: Boolean(getAmapKey()),
         timestamp: new Date().toISOString()
       });

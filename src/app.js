@@ -13,6 +13,9 @@ const startDateInput = document.querySelector("#start-date");
 const endDateInput = document.querySelector("#end-date");
 const priorityInput = document.querySelector("#priority");
 const paceInput = document.querySelector("#pace");
+const quickTripInput = document.querySelector("#quick-trip-input");
+const quickFillButton = document.querySelector("#quick-fill-button");
+const quickFillStatus = document.querySelector("#quick-fill-status");
 const destinationInput = document.querySelector("#destination-input");
 const hotelNameInput = document.querySelector("#hotel-name");
 const tagsContainer = document.querySelector("#destination-tags");
@@ -45,6 +48,17 @@ function bindEvents() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     generatePlan();
+  });
+
+  quickFillButton.addEventListener("click", () => {
+    applyQuickTripText(quickTripInput.value);
+  });
+
+  document.querySelectorAll("[data-example]").forEach((button) => {
+    button.addEventListener("click", () => {
+      quickTripInput.value = button.dataset.example;
+      applyQuickTripText(button.dataset.example);
+    });
   });
 
   destinationInput.addEventListener("keydown", (event) => {
@@ -100,6 +114,181 @@ function addDestination(rawValue) {
   state.destinations = [...new Set([...state.destinations, ...nextCities])].slice(0, maxDestinations);
   renderTags();
   generatePlan();
+}
+
+function applyQuickTripText(rawText) {
+  const parsed = parseQuickTripText(rawText);
+  if (!parsed.hasSignal) {
+    quickFillStatus.textContent = "可以写成：我想从杭州出发，7天，预算6000，想去广东玩。";
+    return;
+  }
+
+  if (parsed.origin) originInput.value = parsed.origin;
+  if (parsed.budget) budgetInput.value = String(parsed.budget);
+  if (parsed.startDate) startDateInput.value = parsed.startDate;
+  if (parsed.endDate) endDateInput.value = parsed.endDate;
+  if (parsed.priority) priorityInput.value = parsed.priority;
+  if (parsed.pace) paceInput.value = parsed.pace;
+  if (parsed.hotelName) hotelNameInput.value = parsed.hotelName;
+  if (parsed.destinations.length) {
+    state.destinations = parsed.destinations.slice(0, maxDestinations);
+    renderTags();
+  }
+  if (Object.keys(parsed.preferences).length) {
+    Object.entries(parsed.preferences).forEach(([name, checked]) => {
+      const checkbox = form.querySelector(`input[data-pref][name="${name}"]`);
+      if (checkbox) checkbox.checked = checked;
+    });
+  }
+
+  quickFillStatus.textContent = buildQuickFillSummary(parsed);
+  generatePlan();
+}
+
+function parseQuickTripText(rawText) {
+  const text = String(rawText || "").trim();
+  const parsed = {
+    hasSignal: Boolean(text),
+    origin: "",
+    budget: null,
+    startDate: "",
+    endDate: "",
+    destinations: [],
+    preferences: {},
+    priority: "",
+    pace: "",
+    hotelName: ""
+  };
+  if (!text) return parsed;
+
+  parsed.origin = parseOrigin(text);
+  parsed.budget = parseBudget(text);
+  parsed.destinations = parseDestinations(text);
+  const dateRange = parseDateRange(text);
+  parsed.startDate = dateRange.startDate;
+  parsed.endDate = dateRange.endDate;
+
+  const days = parseTripDays(text);
+  if (days && !parsed.endDate) {
+    parsed.startDate = parsed.startDate || startDateInput.value || getTodayDateKey();
+    parsed.endDate = addDays(parsed.startDate, days - 1);
+  }
+
+  if (/美食|小吃|吃/.test(text)) parsed.preferences.food = true;
+  if (/文化|历史|博物馆|古城|城市/.test(text)) parsed.preferences.culture = true;
+  if (/自然|海|山|湖|草原|沙漠|森林|公园/.test(text)) parsed.preferences.nature = true;
+  if (/省钱|便宜|预算优先/.test(text)) parsed.priority = "cheap";
+  if (/省时|省时间|快一点|效率/.test(text)) parsed.priority = "fast";
+  if (/少折腾|舒适|轻松/.test(text)) parsed.priority = "comfort";
+  if (/慢游|舒适|轻松|不赶/.test(text)) parsed.pace = "relaxed";
+  if (/紧凑|多玩|多安排/.test(text)) parsed.pace = "intense";
+  parsed.hotelName = parseHotelName(text);
+
+  return parsed;
+}
+
+function parseOrigin(text) {
+  const match = text.match(/(?:从|出发地是|起点是)\s*([\u4e00-\u9fa5A-Za-z]{2,12})(?:出发|走|去|前往|，|,|\s)/);
+  return match?.[1] || "";
+}
+
+function parseBudget(text) {
+  const match = text.match(/(?:预算|人均|总共|总预算)\D{0,4}(\d+(?:\.\d+)?)(万|千|k|K)?/);
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value)) return null;
+  if (match[2] === "万") return Math.round(value * 10000);
+  if (match[2] === "千" || match[2] === "k" || match[2] === "K") return Math.round(value * 1000);
+  return Math.round(value);
+}
+
+function parseTripDays(text) {
+  const match = text.match(/(\d{1,2})\s*(?:天|日)(?!到|至)/);
+  const days = match ? Number(match[1]) : 0;
+  return days > 0 && days <= 30 ? days : 0;
+}
+
+function parseDateRange(text) {
+  const fallbackYear = Number((startDateInput.value || getTodayDateKey()).slice(0, 4));
+  const fullDate = text.match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2}).*?(?:到|至|-|~|—).*?(\d{4})?[/-]?(\d{1,2})[/-](\d{1,2})/);
+  if (fullDate) {
+    const startYear = Number(fullDate[1]);
+    const endYear = Number(fullDate[4] || fullDate[1]);
+    return {
+      startDate: formatDateInput(startYear, fullDate[2], fullDate[3]),
+      endDate: formatDateInput(endYear, fullDate[5], fullDate[6])
+    };
+  }
+
+  const cnDate = text.match(/(\d{1,2})月(\d{1,2})日?.*?(?:到|至|-|~|—).*?(?:(\d{1,2})月)?(\d{1,2})日?/);
+  if (cnDate) {
+    return {
+      startDate: formatDateInput(fallbackYear, cnDate[1], cnDate[2]),
+      endDate: formatDateInput(fallbackYear, cnDate[3] || cnDate[1], cnDate[4])
+    };
+  }
+
+  return { startDate: "", endDate: "" };
+}
+
+function parseDestinations(text) {
+  const regionMap = {
+    广东: ["广州", "深圳", "珠海", "佛山"],
+    粤港澳: ["广州", "深圳", "澳门", "珠海"],
+    大湾区: ["广州", "深圳", "澳门", "珠海"],
+    新疆: ["新疆"],
+    云南: ["昆明", "大理", "丽江"],
+    江浙沪: ["上海", "杭州", "苏州", "南京"],
+    川渝: ["成都", "重庆"]
+  };
+  const directRegion = Object.keys(regionMap).find((key) => text.includes(key));
+  const destinationMatch = text.match(/(?:想去|前往|目的地是|去)\s*([\s\S]+?)(?:玩|旅游|旅行|自由行|，预算|,预算|$)/);
+  const targetText = destinationMatch?.[1] || "";
+  const rawItems = targetText
+    .replace(/和/g, "、")
+    .replace(/以及/g, "、")
+    .split(/[、,，\s]+/)
+    .map((item) => item.replace(/省|市|玩|旅游|旅行/g, "").trim())
+    .filter((item) => item.length >= 2 && !/(出发|预算|天|酒店)/.test(item));
+
+  const mappedItems = rawItems.flatMap((item) => regionMap[item] || [item]);
+  if (mappedItems.length) return [...new Set(mappedItems)];
+  if (directRegion) return regionMap[directRegion];
+  return [];
+}
+
+function parseHotelName(text) {
+  const match = text.match(/(?:住在|酒店是|住宿是|定了|入住)\s*([^，。,.；;]+(?:酒店|民宿|客栈|宾馆|公寓)?)/);
+  return match?.[1]?.trim() || "";
+}
+
+function buildQuickFillSummary(parsed) {
+  const parts = [];
+  if (parsed.origin) parts.push(`${parsed.origin}出发`);
+  if (parsed.destinations.length) parts.push(`去${parsed.destinations.join("、")}`);
+  if (parsed.budget) parts.push(`预算${formatters.currency(parsed.budget)}元`);
+  if (parsed.startDate && parsed.endDate) parts.push(`${formatDateLabel(parsed.startDate)}到${formatDateLabel(parsed.endDate)}`);
+  return parts.length ? `已填写：${parts.join("，")}。` : "已根据这句话更新表单。";
+}
+
+function formatDateInput(year, month, day) {
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function addDays(dateKey, offset) {
+  const date = new Date(`${dateKey}T00:00:00`);
+  date.setDate(date.getDate() + offset);
+  return formatDateInput(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+function getTodayDateKey() {
+  const date = new Date();
+  return formatDateInput(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+function formatDateLabel(dateKey) {
+  const [, month, day] = dateKey.split("-");
+  return `${Number(month)}月${Number(day)}日`;
 }
 
 function renderTags() {
@@ -201,9 +390,28 @@ function renderPlanHeader(plan) {
       <h2>${escapeHtml(plan.route.join(" → "))}</h2>
       <p>${escapeHtml(plan.rationale)}</p>
     </div>
-    <div class="budget-status ${plan.budget.total <= plan.budget.userBudget ? "is-ok" : "is-over"}">
-      <span>预算状态</span>
-      <strong>${plan.budget.total <= plan.budget.userBudget ? "预算内" : "超预算"}</strong>
+    <div class="plan-side">
+      <div class="budget-status ${plan.budget.total <= plan.budget.userBudget ? "is-ok" : "is-over"}">
+        <span>预算状态</span>
+        <strong>${plan.budget.total <= plan.budget.userBudget ? "预算内" : "超预算"}</strong>
+      </div>
+      <div class="score-card">
+        <div>
+          <span>评分构成</span>
+          <strong>${plan.score} 分</strong>
+        </div>
+        <p>${escapeHtml(plan.scoreBreakdown?.formula || "预算 + 省时 + 舒适")}</p>
+        ${(plan.scoreBreakdown?.dimensions || []).map((item) => `
+          <div class="score-row">
+            <div>
+              <span>${escapeHtml(item.label)} · 权重 ${item.weight}%</span>
+              <strong>${item.score}</strong>
+            </div>
+            <div class="score-bar"><span style="width:${Math.max(0, Math.min(100, item.score))}%"></span></div>
+            <small>${escapeHtml(item.detail)}</small>
+          </div>
+        `).join("")}
+      </div>
     </div>
   `;
   return section;
@@ -227,10 +435,10 @@ async function requestPlan(input) {
 
 function renderDataStatus(payload) {
   const modeText = {
-    sample: "已连接后端规划服务，当前使用内置估算数据。",
-    hybrid: "已连接后端规划服务，正在使用真实地理编码 + 估算规划。",
-    amap: "已连接后端规划服务，正在使用高德 POI、路线估算和动态地图。",
-    local: "后端未连接，当前使用浏览器本地规划。"
+    sample: "已生成方案，当前使用内置估算数据。",
+    hybrid: "已生成方案，已使用真实地理编码和估算规划。",
+    amap: "已生成方案，实时高德 POI、路线估算和动态地图已接入。",
+    local: "已在浏览器本地生成方案，后端恢复后会自动使用实时数据。"
   };
   const sources = payload.dataSources?.length ? ` 数据源：${payload.dataSources.join("、")}。` : "";
   const warningText = payload.warnings?.length ? ` 提醒：${payload.warnings[0]}` : "";
@@ -241,6 +449,9 @@ function setLoading(isLoading) {
   submitButton.disabled = isLoading;
   submitButton.querySelector("span").textContent = isLoading ? "…" : "↻";
   submitLabel.textContent = isLoading ? "正在生成..." : "生成旅行方案";
+  if (isLoading) {
+    backendStatus.textContent = "正在整理路线、预算和每日安排，请稍等。";
+  }
 }
 
 function renderTransport(plan) {

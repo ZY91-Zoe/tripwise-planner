@@ -31,7 +31,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -135,6 +136,7 @@ label {
 
 input,
 select,
+textarea,
 .tag-input {
   width: 100%;
   min-height: 44px;
@@ -145,15 +147,75 @@ select,
 }
 
 input,
-select {
+select,
+textarea {
   padding: 0 12px;
 }
 
 input:focus,
 select:focus,
+textarea:focus,
 .tag-input:focus-within {
   outline: 3px solid rgba(23, 127, 134, 0.18);
   border-color: var(--teal);
+}
+
+textarea {
+  min-height: 82px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.quick-planner {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid rgba(23, 127, 134, 0.18);
+  border-radius: 8px;
+  background: #f2fafb;
+}
+
+.quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.secondary-button,
+.text-example {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.secondary-button {
+  border: 0;
+  background: var(--navy);
+  color: white;
+}
+
+.text-example {
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--teal);
+}
+
+.quick-fill-status,
+.field-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.field-help {
+  display: block;
+  margin-top: -2px;
 }
 
 .tag-input {
@@ -463,6 +525,73 @@ select:focus,
 .budget-status.is-over {
   background: #ffe5df;
   color: #a63f30;
+}
+
+.plan-side {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 300px);
+  flex: 0 0 300px;
+}
+
+.score-card {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.score-card > div:first-child,
+.score-row > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.score-card span,
+.score-row span,
+.score-row small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.score-card strong {
+  color: var(--ink);
+}
+
+.score-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.score-row {
+  display: grid;
+  gap: 5px;
+}
+
+.score-row strong {
+  color: var(--teal);
+  font-size: 13px;
+}
+
+.score-bar {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8edf3;
+}
+
+.score-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--teal), var(--gold));
 }
 
 .section-head {
@@ -949,6 +1078,11 @@ a.modal-activity-title:hover {
   .section-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .plan-side {
+    width: 100%;
+    flex-basis: auto;
   }
 
   .tabs {

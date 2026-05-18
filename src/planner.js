@@ -169,7 +169,8 @@ function buildPlan(mode, candidates, input, days, pace, context) {
   const activityCost = Math.round(days.length * (mode === "cheap" ? 105 : mode === "fast" ? 170 : 135));
   const totalCost = transportCost + hotelCost + foodCost + activityCost;
   const daily = buildDailyPlan(days, stayPlan, legs, pace, input.preferences || {}, mode, context);
-  const score = calculatePlanScore(totalCost, transportHours, candidate.comfort, input.budget, mode);
+  const scoreBreakdown = calculatePlanScore(totalCost, transportHours, candidate.comfort, input.budget, mode);
+  const score = scoreBreakdown.total;
 
   return {
     mode,
@@ -188,6 +189,7 @@ function buildPlan(mode, candidates, input, days, pace, context) {
     },
     transportHours,
     score,
+    scoreBreakdown,
     rationale: getRationale(mode, candidate.order, totalCost, transportHours)
   };
 }
@@ -747,7 +749,33 @@ function calculatePlanScore(totalCost, transportHours, comfort, budget, mode) {
   const comfortFit = comfort / 10;
   const weights = modeWeights[mode] || modeWeights.balanced;
   const score = budgetFit * weights.cost + timeFit * weights.time + comfortFit * weights.comfort;
-  return Math.round(score * 100);
+  return {
+    total: Math.round(score * 100),
+    formula: `预算 ${Math.round(weights.cost * 100)}% + 省时 ${Math.round(weights.time * 100)}% + 舒适 ${Math.round(weights.comfort * 100)}%`,
+    dimensions: [
+      {
+        key: "budget",
+        label: "预算匹配",
+        score: Math.round(budgetFit * 100),
+        weight: Math.round(weights.cost * 100),
+        detail: totalCost <= budget ? "预计花费在预算内" : "预计花费超过预算"
+      },
+      {
+        key: "time",
+        label: "省时效率",
+        score: Math.round(timeFit * 100),
+        weight: Math.round(weights.time * 100),
+        detail: `跨城交通约 ${formatHours(transportHours)}`
+      },
+      {
+        key: "comfort",
+        label: "舒适度",
+        score: Math.round(comfortFit * 100),
+        weight: Math.round(weights.comfort * 100),
+        detail: "按换乘复杂度和交通方式估算"
+      }
+    ]
+  };
 }
 
 function getPlanTitle(mode) {
