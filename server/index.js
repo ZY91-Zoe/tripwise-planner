@@ -3,7 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { getCityProfile, planTrip } from "../src/planner.js";
+import { getCityProfile, normalizeCityName, planTrip } from "../src/planner.js";
 import { loadLocalEnv } from "./services/env.js";
 import { buildAmapContext, buildMarkerMapUrl, buildStaticMapUrl } from "./services/amap.js";
 
@@ -33,7 +33,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, {
         ok: true,
         service: "tripwise-planner",
-        version: "0.6.0",
+        version: "0.6.1",
         liveDataConfigured: Boolean(getAmapKey()),
         timestamp: new Date().toISOString()
       });
@@ -125,11 +125,11 @@ function sanitizePlanInput(raw) {
   const transportModes = Array.isArray(raw.transportModes) ? raw.transportModes : [];
 
   return {
-    origin: sanitizeText(raw.origin, "杭州"),
+    origin: normalizeCityName(sanitizeText(raw.origin, "杭州")),
     startDate: sanitizeDate(raw.startDate, "2026-10-01"),
     endDate: sanitizeDate(raw.endDate, "2026-10-07"),
     hotelName: sanitizeText(raw.hotelName, "", 80),
-    destinations: destinations.map((city) => sanitizeText(city, "")).filter(Boolean).slice(0, 8),
+    destinations: destinations.map((city) => normalizeCityName(sanitizeText(city, ""))).filter(Boolean).slice(0, 8),
     budget: clamp(Number(raw.budget || 6800), 800, 200000),
     priority: ["balanced", "cheap", "fast", "comfort"].includes(raw.priority) ? raw.priority : "balanced",
     pace: ["relaxed", "standard", "intense"].includes(raw.pace) ? raw.pace : "standard",

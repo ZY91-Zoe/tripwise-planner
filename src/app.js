@@ -248,13 +248,45 @@ function parseDestinations(text) {
     .replace(/和/g, "、")
     .replace(/以及/g, "、")
     .split(/[、,，\s]+/)
-    .map((item) => item.replace(/省|市|玩|旅游|旅行/g, "").trim())
+    .map((item) => normalizeDestinationName(item.replace(/玩|旅游|旅行/g, "").trim()))
     .filter((item) => item.length >= 2 && !/(出发|预算|天|酒店)/.test(item));
 
   const mappedItems = rawItems.flatMap((item) => regionMap[item] || [item]);
   if (mappedItems.length) return [...new Set(mappedItems)];
   if (directRegion) return regionMap[directRegion];
   return [];
+}
+
+function normalizeDestinationName(value) {
+  const text = String(value || "").replace(/\s+/g, "");
+  const aliases = {
+    浙江杭州: "杭州",
+    浙江省杭州: "杭州",
+    浙江省杭州市: "杭州",
+    杭州市: "杭州",
+    广东广州: "广州",
+    广东省广州: "广州",
+    广东省广州市: "广州",
+    广州市: "广州",
+    广东深圳: "深圳",
+    广东省深圳: "深圳",
+    广东省深圳市: "深圳",
+    深圳市: "深圳",
+    广东珠海: "珠海",
+    广东省珠海: "珠海",
+    广东省珠海市: "珠海",
+    珠海市: "珠海",
+    广东佛山: "佛山",
+    广东省佛山: "佛山",
+    广东省佛山市: "佛山",
+    佛山市: "佛山",
+    广东茂名: "茂名",
+    广东省茂名: "茂名",
+    广东省茂名市: "茂名",
+    茂名市: "茂名",
+    澳门特别行政区: "澳门"
+  };
+  return aliases[text] || text.replace(/省$|市$/g, "");
 }
 
 function parseHotelName(text) {

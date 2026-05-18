@@ -5,7 +5,7 @@ export const cityProfiles = {
     dailyHotel: 460,
     dailyFood: 180,
     coordinates: [120.1551, 30.2741],
-    attractions: ["西湖晨间散步", "南宋御街", "运河夜游", "龙井茶村"]
+    attractions: ["西湖风景名胜区", "灵隐寺", "雷峰塔景区", "西溪国家湿地公园", "河坊街", "京杭大运河杭州景区", "龙井茶村"]
   },
   "广州": {
     region: "广府核心",
@@ -104,14 +104,20 @@ export function getDefaultDestinations() {
 export function planTrip(input) {
   const context = createPlannerContext(input);
   const days = getTripDays(input.startDate, input.endDate);
+  const origin = normalizeCityName(input.origin || "杭州");
   const destinations = normalizeDestinations(input.destinations);
+  const normalizedInput = {
+    ...input,
+    origin,
+    destinations
+  };
   const priority = input.priority || "balanced";
   const pace = paceConfig[input.pace] || paceConfig.standard;
-  const candidates = rankRoutes(input.origin, destinations, priority, context);
+  const candidates = rankRoutes(origin, destinations, priority, context);
   const plans = {
-    balanced: buildPlan("balanced", candidates, input, days, pace, context),
-    cheap: buildPlan("cheap", candidates, input, days, pace, context),
-    fast: buildPlan("fast", candidates, input, days, pace, context)
+    balanced: buildPlan("balanced", candidates, normalizedInput, days, pace, context),
+    cheap: buildPlan("cheap", candidates, normalizedInput, days, pace, context),
+    fast: buildPlan("fast", candidates, normalizedInput, days, pace, context)
   };
 
   return {
@@ -214,7 +220,50 @@ function getTripDays(startDate, endDate) {
 }
 
 function normalizeDestinations(destinations) {
-  return [...new Set(destinations.map((city) => city.trim()).filter(Boolean))];
+  return [...new Set(destinations.map(normalizeCityName).filter(Boolean))];
+}
+
+export function normalizeCityName(value) {
+  const raw = String(value || "").trim().replace(/\s+/g, "");
+  if (!raw) return "";
+
+  const aliases = {
+    浙江杭州: "杭州",
+    浙江省杭州: "杭州",
+    浙江省杭州市: "杭州",
+    杭州市: "杭州",
+    广东广州: "广州",
+    广东省广州: "广州",
+    广东省广州市: "广州",
+    广州市: "广州",
+    广东深圳: "深圳",
+    广东省深圳: "深圳",
+    广东省深圳市: "深圳",
+    深圳市: "深圳",
+    广东珠海: "珠海",
+    广东省珠海: "珠海",
+    广东省珠海市: "珠海",
+    珠海市: "珠海",
+    广东佛山: "佛山",
+    广东省佛山: "佛山",
+    广东省佛山市: "佛山",
+    佛山市: "佛山",
+    广东茂名: "茂名",
+    广东省茂名: "茂名",
+    广东省茂名市: "茂名",
+    茂名市: "茂名",
+    澳门特别行政区: "澳门"
+  };
+  if (aliases[raw]) return aliases[raw];
+
+  const knownCities = Object.keys(cityProfiles);
+  const withoutSuffix = raw.replace(/市$|地区$|自治州$|特别行政区$/g, "");
+  const knownCity = knownCities.find((city) => withoutSuffix.endsWith(city));
+  if (knownCity) return knownCity;
+
+  return withoutSuffix
+    .replace(/省$/, "")
+    .replace(/市$/, "");
 }
 
 function rankRoutes(origin, destinations, mode, context) {
@@ -469,14 +518,16 @@ function normalizeActivity(activity, fallbackSource) {
   return {
     title: activity.title || activity.name || "推荐地点",
     meta: [activity.type, activity.address, activity.rating ? `评分 ${activity.rating}` : ""].filter(Boolean).join(" · "),
-    source: activity.source || fallbackSource,
+    source: activity.corePriority ? "核心地标" : (activity.source || fallbackSource),
     coordinates: activity.coordinates,
     areaLabel: activity.areaLabel || "",
     areaKey: activity.areaKey || activity.areaLabel || "",
     url: activity.url || "",
     imageUrl: activity.imageUrl || "",
     xiaohongshuUrl: activity.xiaohongshuUrl || buildXiaohongshuSearchUrl(`${activity.name || activity.title || ""} 攻略`),
-    rating: activity.rating || ""
+    rating: activity.rating || "",
+    corePriority: activity.corePriority || 0,
+    recommendationReason: activity.recommendationReason || ""
   };
 }
 

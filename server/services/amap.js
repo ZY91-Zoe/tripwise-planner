@@ -6,6 +6,16 @@ const AMAP_URI_MARKER_URL = "https://uri.amap.com/marker";
 
 const requestTimeoutMs = 7000;
 
+const coreLandmarksByCity = {
+  "杭州": ["西湖风景名胜区", "灵隐寺", "雷峰塔景区", "西溪国家湿地公园", "河坊街", "京杭大运河杭州景区", "龙井茶村"],
+  "广州": ["陈家祠", "永庆坊", "广州塔", "广东省博物馆", "沙面岛", "珠江夜游"],
+  "深圳": ["深圳湾公园", "莲花山公园", "南头古城", "华侨城创意园", "海上世界"],
+  "澳门": ["大三巴牌坊", "议事亭前地", "官也街", "路环老街", "澳门塔"],
+  "佛山": ["佛山祖庙", "岭南天地", "清晖园", "逢简水乡"],
+  "珠海": ["情侣路", "珠海大剧院", "圆明新园", "横琴长隆", "拱北口岸"],
+  "西安": ["西安城墙", "秦始皇帝陵博物院", "陕西历史博物馆", "大雁塔", "钟鼓楼广场", "大唐不夜城"]
+};
+
 export async function buildAmapContext(input) {
   const apiKey = process.env.AMAP_API_KEY || process.env.GAODE_API_KEY || "";
   const dataSources = ["内置城市样例库", "启发式路线优化"];
@@ -108,26 +118,19 @@ async function geocodeCity(city, apiKey) {
 }
 
 async function searchCityPois(city, preferences, apiKey) {
-  const keywords = [
-    `${city} 必游景点`,
-    `${city} 旅游景点`,
-    `${city} 博物馆`,
-    `${city} 城墙 古城`,
-    ...(preferences.food ? [`${city} 老字号 美食`] : []),
-    ...(preferences.nature ? [`${city} 公园 景区`] : []),
-    ...getRegionalPoiKeywords(city, preferences)
-  ].slice(0, 11);
+  const keywords = buildPoiKeywords(city, preferences);
   const seen = new Set();
+  const seenCoreNames = new Set();
   const results = [];
   const cityLimited = shouldUseCityLimit(city);
 
-  for (const keyword of keywords) {
+  for (const item of keywords) {
     const params = new URLSearchParams({
       key: apiKey,
-      keywords: keyword,
+      keywords: item.keyword,
       city,
       citylimit: cityLimited ? "true" : "false",
-      offset: "15",
+      offset: item.coreName ? "5" : "15",
       page: "1",
       extensions: "all"
     });
@@ -135,10 +138,13 @@ async function searchCityPois(city, preferences, apiKey) {
     if (payload.status !== "1") continue;
 
     for (const poi of payload.pois || []) {
+      if (item.coreName && seenCoreNames.has(item.coreName)) continue;
       if (!isUsefulPoi(poi) || seen.has(poi.name)) continue;
       const [lng, lat] = poi.location.split(",").map(Number);
       seen.add(poi.name);
+      if (item.coreName) seenCoreNames.add(item.coreName);
       const areaLabel = formatPoiAreaLabel(poi, city);
+      const corePriority = item.coreName ? getCoreLandmarkPriority(city, item.coreName) : 0;
       results.push({
         title: poi.name,
         name: poi.name,
@@ -154,12 +160,38 @@ async function searchCityPois(city, preferences, apiKey) {
         areaKey: formatPoiAreaKey(poi, city, cityLimited, [lng, lat]),
         xiaohongshuUrl: buildXiaohongshuSearchUrl(`${city} ${poi.name} 攻略`),
         rating: poi.biz_ext?.rating || "",
-        cost: poi.biz_ext?.cost || ""
+        cost: poi.biz_ext?.cost || "",
+        coreName: item.coreName || "",
+        corePriority,
+        recommendationReason: corePriority ? "城市必游地标优先" : "高德POI评分与偏好补充"
       });
     }
   }
 
-  return rankPois(results, preferences).slice(0, 30);
+  return rankPois(results, preferences).slice(0, 36);
+}
+
+function buildPoiKeywords(city, preferences) {
+  const coreKeywords = (coreLandmarksByCity[city] || []).map((name) => ({
+    keyword: `${city} ${name}`,
+    coreName: name
+  }));
+  const genericKeywords = [
+    `${city} 必游景点`,
+    `${city} 旅游景点`,
+    `${city} 博物馆`,
+    `${city} 古城 历史`,
+    ...(preferences.nature ? [`${city} 公园 景区`] : []),
+    ...(preferences.food ? [`${city} 老字号 美食`] : []),
+    ...getRegionalPoiKeywords(city, preferences).map((keyword) => ({ keyword }))
+  ].map((keyword) => (typeof keyword === "string" ? { keyword } : keyword));
+
+  return [...coreKeywords, ...genericKeywords].slice(0, 14);
+}
+
+function getCoreLandmarkPriority(city, coreName) {
+  const index = (coreLandmarksByCity[city] || []).indexOf(coreName);
+  return index >= 0 ? 1000 - index * 35 : 0;
 }
 
 async function searchHotel(city, hotelName, apiKey) {
@@ -366,6 +398,8 @@ function isHotelLikePoi(poi) {
 
 function rankPois(pois, preferences) {
   return [...pois].sort((a, b) => {
+    const coreDelta = (b.corePriority || 0) - (a.corePriority || 0);
+    if (coreDelta !== 0) return coreDelta;
     const categoryDelta = poiCategoryRank(a) - poiCategoryRank(b);
     if (categoryDelta !== 0) return categoryDelta;
     return scorePoi(b, preferences) - scorePoi(a, preferences);
@@ -378,13 +412,15 @@ function scorePoi(poi, preferences) {
   const text = `${nameType}${address}`;
   let score = 0;
 
+  score += poi.corePriority || 0;
   if (/风景名胜|旅游景点|名胜古迹|博物馆|纪念馆|寺庙|教堂|公园|广场|文化场馆/.test(nameType)) score += 50;
-  if (/城墙|古城|钟楼|鼓楼|大雁塔|小雁塔|兵马俑|历史博物馆|大唐|华清|碑林|回民街/.test(nameType)) score += 28;
-  if (/城墙|古城|钟楼|鼓楼|大雁塔|小雁塔|兵马俑|历史博物馆|大唐|华清|碑林|回民街/.test(address)) score += 6;
-  if (/购物|商圈|步行街|美食|餐饮|小吃|老字号/.test(nameType)) score += preferences.food ? 18 : 4;
+  if (/西湖|灵隐|雷峰塔|西溪|大运河|河坊街|龙井|城墙|古城|钟楼|鼓楼|大雁塔|小雁塔|兵马俑|历史博物馆|大唐|华清|碑林|回民街/.test(nameType)) score += 36;
+  if (/西湖|灵隐|雷峰塔|西溪|大运河|河坊街|龙井|城墙|古城|钟楼|鼓楼|大雁塔|小雁塔|兵马俑|历史博物馆|大唐|华清|碑林|回民街/.test(address)) score += 8;
+  if (/购物|商圈|步行街|美食|餐饮|小吃|老字号/.test(nameType)) score += preferences.food ? 10 : 2;
   if (/公园|山|湖|河|湿地|森林|海|湾/.test(nameType)) score += preferences.nature ? 18 : 4;
   if (poi.rating && Number(poi.rating) > 0) score += Math.min(10, Number(poi.rating) * 2);
   if (/售票|票务|入口|出口|停车场/.test(text)) score -= 80;
+  if (/餐饮|中餐厅|小吃|快餐|咖啡厅/.test(nameType) && !/老字号|美食街|夜市|河坊街/.test(nameType)) score -= 20;
 
   return score;
 }
