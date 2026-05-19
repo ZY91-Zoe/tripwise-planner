@@ -137,38 +137,85 @@ async function searchCityPois(city, preferences, apiKey) {
     const payload = await fetchAmapJson(`${AMAP_POI_URL}?${params.toString()}`);
     if (payload.status !== "1") continue;
 
+    if (item.coreName) {
+      if (seenCoreNames.has(item.coreName)) continue;
+      appendPoiResult({
+        city,
+        cityLimited,
+        item,
+        poi: selectBestCorePoi(payload.pois || [], item.coreName),
+        results,
+        seen,
+        seenCoreNames
+      });
+      continue;
+    }
+
     for (const poi of payload.pois || []) {
-      if (item.coreName && seenCoreNames.has(item.coreName)) continue;
-      if (!isUsefulPoi(poi) || seen.has(poi.name)) continue;
-      const [lng, lat] = poi.location.split(",").map(Number);
-      seen.add(poi.name);
-      if (item.coreName) seenCoreNames.add(item.coreName);
-      const areaLabel = formatPoiAreaLabel(poi, city);
-      const corePriority = item.coreName ? getCoreLandmarkPriority(city, item.coreName) : 0;
-      results.push({
-        title: poi.name,
-        name: poi.name,
-        type: normalizePoiType(poi.type),
-        address: normalizePoiAddress(poi),
-        source: "高德POI",
-        coordinates: [lng, lat],
-        url: buildPoiMarkerUrl(poi.name, [lng, lat]),
-        imageUrl: normalizePoiPhoto(poi),
-        cityName: normalizeAmapText(poi.cityname),
-        adName: normalizeAmapText(poi.adname),
-        areaLabel,
-        areaKey: formatPoiAreaKey(poi, city, cityLimited, [lng, lat]),
-        xiaohongshuUrl: buildXiaohongshuSearchUrl(`${city} ${poi.name} 攻略`),
-        rating: poi.biz_ext?.rating || "",
-        cost: poi.biz_ext?.cost || "",
-        coreName: item.coreName || "",
-        corePriority,
-        recommendationReason: corePriority ? "城市必游地标优先" : "高德POI评分与偏好补充"
+      appendPoiResult({
+        city,
+        cityLimited,
+        item,
+        poi,
+        results,
+        seen,
+        seenCoreNames
       });
     }
   }
 
   return rankPois(results, preferences).slice(0, 36);
+}
+
+function appendPoiResult({ city, cityLimited, item, poi, results, seen, seenCoreNames }) {
+  if (!poi) return;
+  if (!isUsefulPoi(poi) || seen.has(poi.name)) return;
+
+  const [lng, lat] = poi.location.split(",").map(Number);
+  seen.add(poi.name);
+  if (item.coreName) seenCoreNames.add(item.coreName);
+  const areaLabel = formatPoiAreaLabel(poi, city);
+  const corePriority = item.coreName ? getCoreLandmarkPriority(city, item.coreName) : 0;
+
+  results.push({
+    title: poi.name,
+    name: poi.name,
+    type: normalizePoiType(poi.type),
+    address: normalizePoiAddress(poi),
+    source: "高德POI",
+    coordinates: [lng, lat],
+    url: buildPoiMarkerUrl(poi.name, [lng, lat]),
+    imageUrl: normalizePoiPhoto(poi),
+    cityName: normalizeAmapText(poi.cityname),
+    adName: normalizeAmapText(poi.adname),
+    areaLabel,
+    areaKey: formatPoiAreaKey(poi, city, cityLimited, [lng, lat]),
+    xiaohongshuUrl: buildXiaohongshuSearchUrl(`${city} ${poi.name} 攻略`),
+    rating: poi.biz_ext?.rating || "",
+    cost: poi.biz_ext?.cost || "",
+    coreName: item.coreName || "",
+    corePriority,
+    recommendationReason: corePriority ? "城市必游地标优先" : "高德POI评分与偏好补充"
+  });
+}
+
+function selectBestCorePoi(pois, coreName) {
+  return pois
+    .filter(isUsefulPoi)
+    .sort((a, b) => scoreCoreCandidate(b, coreName) - scoreCoreCandidate(a, coreName))[0] || null;
+}
+
+function scoreCoreCandidate(poi, coreName) {
+  const name = String(poi.name || "");
+  const type = String(poi.type || "");
+  let score = 0;
+  if (name === coreName || name.endsWith(coreName)) score += 80;
+  if (name.includes(coreName) || coreName.includes(name)) score += 45;
+  if (normalizePoiPhoto(poi)) score += 25;
+  if (/风景名胜|旅游景点|名胜古迹|寺庙|文化场馆/.test(type)) score += 12;
+  if (poi.biz_ext?.rating && Number(poi.biz_ext.rating) > 0) score += Number(poi.biz_ext.rating) * 2;
+  if (/入口|出口|停车场|游客中心|售票/.test(name)) score -= 80;
+  return score;
 }
 
 function buildPoiKeywords(city, preferences) {

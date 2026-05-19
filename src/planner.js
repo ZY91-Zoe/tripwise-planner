@@ -511,7 +511,10 @@ function normalizeActivity(activity, fallbackSource) {
     return {
       title: activity,
       meta: "",
-      source: fallbackSource
+      source: fallbackSource,
+      url: buildAmapSearchUrl(activity),
+      imageUrl: "",
+      xiaohongshuUrl: buildXiaohongshuSearchUrl(`${activity} 攻略`)
     };
   }
 
@@ -778,6 +781,12 @@ function buildXiaohongshuSearchUrl(query) {
   const keyword = String(query || "").trim();
   if (!keyword) return "";
   return `https://www.xiaohongshu.com/search_result?keyword=${encodeURIComponent(keyword)}`;
+}
+
+function buildAmapSearchUrl(query) {
+  const keyword = String(query || "").trim();
+  if (!keyword) return "";
+  return `https://www.amap.com/search?query=${encodeURIComponent(keyword)}`;
 }
 
 function transportScore(option, selectionMode) {
