@@ -147,7 +147,8 @@ function createPlannerContext(input) {
     cityProfiles: input.cityProfiles || input.profileOverrides || {},
     legOverrides: normalizeLegOverrides(input.legOverrides || {}),
     transportModes: normalizeTransportModes(input.transportModes),
-    hotelName: input.hotelName || ""
+    hotelName: input.hotelName || "",
+    hotelArea: input.hotelArea || ""
   };
 }
 
@@ -405,8 +406,10 @@ function buildDailyPlan(days, stayPlan, legs, pace, preferences, mode, context) 
     const usedTitles = usedByCity.get(city) || new Set();
     const attractions = chooseActivities(profile, pace.maxActivities, preferences, mode, cityDayIndex, usedTitles);
     const stayArea = deriveDayStayArea(city, profile, attractions);
-    const hotel = selectRelevantHotel(normalizeHotel(profile.hotel), attractions);
-    const transfers = buildDayTransfers(attractions, hotel);
+    const bookedHotel = selectRelevantHotel(normalizeHotel(profile.hotel), attractions);
+    const recommendedHotel = bookedHotel ? null : selectRecommendedHotel(profile.hotelRecommendations, attractions, context.hotelArea);
+    const lodging = bookedHotel || recommendedHotel;
+    const transfers = buildDayTransfers(attractions, lodging);
     const badge = isMoveDay ? "移动日" : pace.label;
     dayIndexByCity.set(city, cityDayIndex + 1);
     usedByCity.set(city, usedTitles);
@@ -415,8 +418,8 @@ function buildDailyPlan(days, stayPlan, legs, pace, preferences, mode, context) 
       ...day,
       city,
       badge,
-      stayArea: hotel?.name || stayArea,
-      hotel,
+      stayArea: lodging?.name || stayArea,
+      hotel: lodging,
       transfers,
       localTransitMinutes: transfers.reduce((sum, item) => sum + item.minutes, 0),
       activities: [
@@ -429,14 +432,24 @@ function buildDailyPlan(days, stayPlan, legs, pace, preferences, mode, context) 
         }] : []),
         ...attractions,
         {
-          title: hotel ? `住宿：${hotel.name}` : `住宿建议：${stayArea}`,
-          meta: hotel
-            ? [hotel.address, "已按该住宿位置估算首末段日内交通"].filter(Boolean).join(" · ")
+          title: bookedHotel
+            ? `住宿：${bookedHotel.name}`
+            : recommendedHotel
+              ? `推荐酒店：${recommendedHotel.name}`
+              : `住宿建议：${stayArea}`,
+          meta: lodging
+            ? [
+              lodging.address,
+              lodging.rating ? `评分 ${lodging.rating}` : "",
+              lodging.cost ? `参考价 ¥${lodging.cost}` : "",
+              bookedHotel ? "已按该住宿位置估算首末段日内交通" : lodging.recommendationReason
+            ].filter(Boolean).join(" · ")
             : (profile.poiAttractions?.length ? "根据当天高德热门点位推荐活动半径" : "根据内置城市经验推荐"),
-          source: hotel?.source || "住宿",
-          coordinates: hotel?.coordinates,
-          url: hotel?.url || "",
-          xiaohongshuUrl: hotel?.xiaohongshuUrl || buildXiaohongshuSearchUrl(`${city} ${hotel?.name || stayArea} 住宿`)
+          source: lodging?.source || "住宿",
+          coordinates: lodging?.coordinates,
+          url: lodging?.url || "",
+          imageUrl: lodging?.imageUrl || "",
+          xiaohongshuUrl: lodging?.xiaohongshuUrl || buildXiaohongshuSearchUrl(`${city} ${lodging?.name || stayArea} 住宿`)
         }
       ]
     };
@@ -701,6 +714,11 @@ function normalizeHotel(hotel) {
     source: hotel.source || "住宿",
     coordinates: hotel.coordinates,
     url: hotel.url || "",
+    imageUrl: hotel.imageUrl || "",
+    rating: hotel.rating || "",
+    cost: hotel.cost || "",
+    areaLabel: hotel.areaLabel || "",
+    recommendationReason: hotel.recommendationReason || "",
     xiaohongshuUrl: hotel.xiaohongshuUrl || buildXiaohongshuSearchUrl(`${hotel.name} 住宿攻略`)
   };
 }
@@ -711,6 +729,41 @@ function selectRelevantHotel(hotel, activities) {
   if (!stops.length) return hotel;
   const nearestDistance = Math.min(...stops.map((activity) => haversine(hotel.coordinates, activity.coordinates)));
   return nearestDistance <= 120 ? hotel : null;
+}
+
+function selectRecommendedHotel(hotels, activities, hotelArea = "") {
+  const candidates = (Array.isArray(hotels) ? hotels : [])
+    .map(normalizeHotel)
+    .filter(Boolean);
+  if (!candidates.length) return null;
+
+  const stops = activities.filter((activity) => Array.isArray(activity.coordinates));
+  if (!stops.length) return candidates[0];
+
+  const areaKeyword = normalizeStayAreaKeyword(hotelArea);
+  const scored = candidates.map((hotel, index) => {
+    const distances = stops.map((activity) => haversine(hotel.coordinates, activity.coordinates));
+    const averageDistance = distances.reduce((sum, distance) => sum + distance, 0) / distances.length;
+    const nearestDistance = Math.min(...distances);
+    const rating = hotel.rating && Number(hotel.rating) > 0 ? Number(hotel.rating) : 4;
+    const imageBonus = hotel.imageUrl ? 8 : 0;
+    const hotelText = `${hotel.name}${hotel.address}${hotel.areaLabel}`;
+    const areaBonus = areaKeyword && hotelText.includes(areaKeyword) ? 80 : 0;
+
+    return {
+      hotel,
+      nearestDistance,
+      score: averageDistance - rating * 4 - imageBonus - areaBonus + index * 4
+    };
+  }).sort((a, b) => a.score - b.score);
+
+  return scored.find((item) => item.nearestDistance <= 90)?.hotel || scored[0]?.hotel || null;
+}
+
+function normalizeStayAreaKeyword(hotelArea) {
+  return String(hotelArea || "")
+    .replace(/附近|周边|一带|商圈|片区|区域|边|旁/g, "")
+    .trim();
 }
 
 function buildDayTransfers(activities, hotel) {
@@ -758,13 +811,79 @@ function getLocalTransitMode(distanceKm) {
   return "步行/短途打车估算";
 }
 
+const railStationLookup = {
+  "北京": { name: "北京", code: "BJP" },
+  "上海": { name: "上海虹桥", code: "AOH" },
+  "杭州": { name: "杭州东", code: "HGH" },
+  "温州": { name: "温州南", code: "VRH" },
+  "广州": { name: "广州南", code: "IZQ" },
+  "深圳": { name: "深圳北", code: "IOQ" },
+  "珠海": { name: "珠海", code: "ZHQ" },
+  "澳门": { name: "珠海", code: "ZHQ" },
+  "佛山": { name: "佛山西", code: "FOQ" },
+  "西安": { name: "西安北", code: "EAY" }
+};
+
+const flightCityLookup = {
+  "北京": "PEK",
+  "上海": "SHA",
+  "杭州": "HGH",
+  "温州": "WNZ",
+  "广州": "CAN",
+  "深圳": "SZX",
+  "珠海": "ZUH",
+  "澳门": "MFM",
+  "西安": "XIY"
+};
+
 function buildTransportSearchUrl(type, from, to, travelDate = "") {
   const query = encodeURIComponent(`${from} 到 ${to}${travelDate ? ` ${travelDate}` : ""}`);
-  if (type === "rail") return "https://kyfw.12306.cn/otn/leftTicket/init";
-  if (type === "flight") return "https://flights.ctrip.com/";
+  if (type === "rail") return buildRailSearchUrl(from, to, travelDate);
+  if (type === "flight") return buildFlightSearchUrl(from, to, travelDate, query);
   if (type === "bus") return `https://bus.ctrip.com/?keyword=${query}`;
   if (type === "driving") return `https://www.amap.com/search?query=${query}%20自驾路线`;
   return `https://www.ctrip.com/?keyword=${query}`;
+}
+
+function buildRailSearchUrl(from, to, travelDate = "") {
+  const fromStation = railStationLookup[normalizeCityName(from)];
+  const toStation = railStationLookup[normalizeCityName(to)];
+  const date = normalizeProviderDate(travelDate);
+
+  if (!fromStation || !toStation) {
+    const params = new URLSearchParams({
+      linktypeid: "dc",
+      date
+    });
+    return `https://kyfw.12306.cn/otn/leftTicket/init?${params.toString()}`;
+  }
+
+  const params = new URLSearchParams({
+    linktypeid: "dc",
+    fs: `${fromStation.name},${fromStation.code}`,
+    ts: `${toStation.name},${toStation.code}`,
+    date,
+    flag: "N,N,Y"
+  });
+  return `https://kyfw.12306.cn/otn/leftTicket/init?${params.toString()}`;
+}
+
+function buildFlightSearchUrl(from, to, travelDate = "", query = "") {
+  const fromCode = flightCityLookup[normalizeCityName(from)];
+  const toCode = flightCityLookup[normalizeCityName(to)];
+  const date = normalizeProviderDate(travelDate);
+
+  if (fromCode && toCode) {
+    const params = new URLSearchParams();
+    if (date) params.set("depdate", date);
+    return `https://flights.ctrip.com/online/list/oneway-${fromCode}-${toCode}${params.toString() ? `?${params.toString()}` : ""}`;
+  }
+
+  return `https://flights.ctrip.com/online/list/oneway?keyword=${query}`;
+}
+
+function normalizeProviderDate(date) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(date || "")) ? date : "";
 }
 
 function getTransportBookingLabel(type) {

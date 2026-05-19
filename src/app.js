@@ -18,6 +18,7 @@ const quickFillButton = document.querySelector("#quick-fill-button");
 const quickFillStatus = document.querySelector("#quick-fill-status");
 const destinationInput = document.querySelector("#destination-input");
 const hotelNameInput = document.querySelector("#hotel-name");
+const hotelAreaInput = document.querySelector("#hotel-area");
 const tagsContainer = document.querySelector("#destination-tags");
 const routeTitle = document.querySelector("#route-title");
 const routeMapImage = document.querySelector(".map-visual img");
@@ -105,13 +106,10 @@ function bindEvents() {
 }
 
 function addDestination(rawValue) {
-  const nextCities = rawValue
-    .split(/[,，、\s]+/)
-    .map((city) => city.trim())
-    .filter(Boolean);
+  const nextCities = parseDestinationList(rawValue);
 
   if (!nextCities.length) return;
-  state.destinations = [...new Set([...state.destinations, ...nextCities])].slice(0, maxDestinations);
+  state.destinations = mergeDestinationList(nextCities);
   renderTags();
   generatePlan();
 }
@@ -130,6 +128,7 @@ function applyQuickTripText(rawText) {
   if (parsed.priority) priorityInput.value = parsed.priority;
   if (parsed.pace) paceInput.value = parsed.pace;
   if (parsed.hotelName) hotelNameInput.value = parsed.hotelName;
+  if (parsed.hotelArea) hotelAreaInput.value = parsed.hotelArea;
   if (parsed.destinations.length) {
     state.destinations = parsed.destinations.slice(0, maxDestinations);
     renderTags();
@@ -157,7 +156,8 @@ function parseQuickTripText(rawText) {
     preferences: {},
     priority: "",
     pace: "",
-    hotelName: ""
+    hotelName: "",
+    hotelArea: ""
   };
   if (!text) return parsed;
 
@@ -182,7 +182,8 @@ function parseQuickTripText(rawText) {
   if (/少折腾|舒适|轻松/.test(text)) parsed.priority = "comfort";
   if (/慢游|舒适|轻松|不赶/.test(text)) parsed.pace = "relaxed";
   if (/紧凑|多玩|多安排/.test(text)) parsed.pace = "intense";
-  parsed.hotelName = parseHotelName(text);
+  parsed.hotelArea = parseHotelArea(text);
+  parsed.hotelName = parseHotelName(text, parsed.hotelArea);
 
   return parsed;
 }
@@ -289,8 +290,14 @@ function normalizeDestinationName(value) {
   return aliases[text] || text.replace(/省$|市$/g, "");
 }
 
-function parseHotelName(text) {
-  const match = text.match(/(?:住在|酒店是|住宿是|定了|入住)\s*([^，。,.；;]+(?:酒店|民宿|客栈|宾馆|公寓)?)/);
+function parseHotelArea(text) {
+  const match = text.match(/(?:想住在|希望住在|住宿区域(?:是|在)?|住在)\s*([^，。,.；;]+?(?:附近|周边|一带|商圈|片区|区域|边|旁))/);
+  return match?.[1]?.trim() || "";
+}
+
+function parseHotelName(text, hotelArea = "") {
+  if (hotelArea) return "";
+  const match = text.match(/(?:酒店是|住宿是|定了|入住|住在)\s*([^，。,.；;]+(?:酒店|民宿|客栈|宾馆|公寓))/);
   return match?.[1]?.trim() || "";
 }
 
@@ -300,6 +307,7 @@ function buildQuickFillSummary(parsed) {
   if (parsed.destinations.length) parts.push(`去${parsed.destinations.join("、")}`);
   if (parsed.budget) parts.push(`预算${formatters.currency(parsed.budget)}元`);
   if (parsed.startDate && parsed.endDate) parts.push(`${formatDateLabel(parsed.startDate)}到${formatDateLabel(parsed.endDate)}`);
+  if (parsed.hotelArea) parts.push(`想住${parsed.hotelArea}`);
   return parts.length ? `已填写：${parts.join("，")}。` : "已根据这句话更新表单。";
 }
 
@@ -342,6 +350,7 @@ function renderTags() {
 }
 
 function collectInput() {
+  syncPendingDestinationInput();
   const preferences = Object.fromEntries(
     [...form.querySelectorAll("input[data-pref]")].map((checkbox) => [checkbox.name, checkbox.checked])
   );
@@ -360,10 +369,36 @@ function collectInput() {
     priority: priorityInput.value,
     pace: paceInput.value,
     hotelName: hotelNameInput.value.trim(),
+    hotelArea: hotelAreaInput.value.trim(),
     destinations: state.destinations,
     transportModes,
     preferences
   };
+}
+
+function syncPendingDestinationInput() {
+  const pendingDestinations = parseDestinationList(destinationInput.value);
+  if (!pendingDestinations.length) return;
+  state.destinations = mergeDestinationList(pendingDestinations);
+  destinationInput.value = "";
+  renderTags();
+}
+
+function parseDestinationList(rawValue) {
+  return String(rawValue || "")
+    .split(/[,，、\s]+/)
+    .map((city) => normalizeDestinationName(city.trim()))
+    .filter(Boolean);
+}
+
+function mergeDestinationList(nextCities) {
+  const base = isDefaultDestinationList(state.destinations) ? [] : state.destinations;
+  return [...new Set([...base, ...nextCities])].slice(0, maxDestinations);
+}
+
+function isDefaultDestinationList(destinations) {
+  const defaults = getDefaultDestinations();
+  return destinations.length === defaults.length && destinations.every((city, index) => city === defaults[index]);
 }
 
 async function generatePlan() {

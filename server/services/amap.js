@@ -70,6 +70,18 @@ export async function buildAmapContext(input) {
     }))
     : [];
 
+  const hotelRecommendationEntries = !input.hotelName
+    ? await Promise.all(input.destinations.map(async (city) => {
+      try {
+        const hotels = await searchHotelRecommendations(city, input.hotelArea, apiKey);
+        return [city, hotels];
+      } catch {
+        warnings.push(`${city} 酒店推荐检索失败，已回退到住宿圈建议。`);
+        return [city, []];
+      }
+    }))
+    : [];
+
   for (const [city, profile] of poiEntries) {
     if (!profile) continue;
     cityProfiles[city] = {
@@ -86,11 +98,19 @@ export async function buildAmapContext(input) {
     };
   }
 
+  for (const [city, hotels] of hotelRecommendationEntries) {
+    if (!hotels?.length) continue;
+    cityProfiles[city] = {
+      ...(cityProfiles[city] || {}),
+      hotelRecommendations: hotels
+    };
+  }
+
   const legOverrides = await buildLegOverrides(cities, cityProfiles, apiKey, warnings);
 
   return {
     dataMode: "amap",
-    dataSources: [...dataSources, "高德地图地理编码", "高德 POI 搜索", "高德路线估算", "高德静态地图"],
+    dataSources: [...dataSources, "高德地图地理编码", "高德 POI 搜索", "高德酒店/住宿搜索", "高德路线估算", "高德静态地图"],
     warnings,
     cityProfiles,
     legOverrides
@@ -271,6 +291,93 @@ async function searchHotel(city, hotelName, apiKey) {
     areaLabel: formatPoiAreaLabel(match, city),
     xiaohongshuUrl: buildXiaohongshuSearchUrl(`${match.name} 入住 交通 攻略`)
   };
+}
+
+async function searchHotelRecommendations(city, hotelArea, apiKey) {
+  const keywords = buildHotelKeywords(city, hotelArea);
+  const seen = new Set();
+  const results = [];
+  const cityLimited = shouldUseCityLimit(city);
+
+  for (const keyword of keywords) {
+    const params = new URLSearchParams({
+      key: apiKey,
+      keywords: keyword,
+      city,
+      citylimit: cityLimited ? "true" : "false",
+      types: "100000",
+      offset: "12",
+      page: "1",
+      extensions: "all"
+    });
+    const payload = await fetchAmapJson(`${AMAP_POI_URL}?${params.toString()}`);
+    if (payload.status !== "1") continue;
+
+    for (const poi of payload.pois || []) {
+      if (!String(poi.location || "").includes(",") || seen.has(poi.name) || !isHotelLikePoi(poi)) continue;
+      seen.add(poi.name);
+      results.push(normalizeHotelPoi(city, poi, hotelArea));
+    }
+  }
+
+  return rankHotels(results, hotelArea).slice(0, 8);
+}
+
+function buildHotelKeywords(city, hotelArea) {
+  const area = String(hotelArea || "").trim();
+  if (area) {
+    return [
+      `${city} ${area} 酒店`,
+      `${city} ${area} 民宿`,
+      `${city} ${area} 住宿`
+    ];
+  }
+
+  return [
+    `${city} 热门酒店`,
+    `${city} 景区附近酒店`,
+    `${city} 市中心酒店`
+  ];
+}
+
+function normalizeHotelPoi(city, poi, hotelArea) {
+  const [lng, lat] = poi.location.split(",").map(Number);
+  const rating = normalizeAmapText(poi.biz_ext?.rating);
+  const cost = normalizeAmapText(poi.biz_ext?.cost);
+  const areaLabel = formatPoiAreaLabel(poi, city);
+  const reason = hotelArea ? `匹配“${hotelArea}”住宿偏好` : "按城市热门住宿点推荐";
+
+  return {
+    name: poi.name,
+    address: normalizePoiAddress(poi),
+    type: normalizePoiType(poi.type),
+    source: hotelArea ? "高德住宿区域推荐" : "高德酒店推荐",
+    coordinates: [lng, lat],
+    url: buildPoiMarkerUrl(poi.name, [lng, lat]),
+    imageUrl: normalizePoiPhoto(poi),
+    cityName: normalizeAmapText(poi.cityname),
+    adName: normalizeAmapText(poi.adname),
+    areaLabel,
+    rating,
+    cost,
+    recommendationReason: reason,
+    xiaohongshuUrl: buildXiaohongshuSearchUrl(`${city} ${poi.name} 入住 攻略`)
+  };
+}
+
+function rankHotels(hotels, hotelArea) {
+  return [...hotels].sort((a, b) => scoreHotel(b, hotelArea) - scoreHotel(a, hotelArea));
+}
+
+function scoreHotel(hotel, hotelArea) {
+  const text = `${hotel.name || ""}${hotel.address || ""}${hotel.areaLabel || ""}`;
+  let score = 0;
+  if (hotel.rating && Number(hotel.rating) > 0) score += Number(hotel.rating) * 16;
+  if (hotel.imageUrl) score += 12;
+  if (/酒店|宾馆|民宿|客栈|公寓/.test(hotel.name || "")) score += 8;
+  if (hotel.cost && Number(hotel.cost) > 0) score += 4;
+  if (hotelArea && text.includes(String(hotelArea).replace(/附近|周边|一带|商圈|片区|区域|边|旁/g, ""))) score += 18;
+  return score;
 }
 
 async function buildLegOverrides(cities, cityProfiles, apiKey, warnings) {

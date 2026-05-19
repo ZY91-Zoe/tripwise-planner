@@ -33,7 +33,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, {
         ok: true,
         service: "tripwise-planner",
-        version: "0.6.2",
+        version: "0.6.3",
         liveDataConfigured: Boolean(getAmapKey()),
         timestamp: new Date().toISOString()
       });
@@ -129,6 +129,7 @@ function sanitizePlanInput(raw) {
     startDate: sanitizeDate(raw.startDate, "2026-10-01"),
     endDate: sanitizeDate(raw.endDate, "2026-10-07"),
     hotelName: sanitizeText(raw.hotelName, "", 80),
+    hotelArea: sanitizeText(raw.hotelArea, "", 80),
     destinations: destinations.map((city) => normalizeCityName(sanitizeText(city, ""))).filter(Boolean).slice(0, 8),
     budget: clamp(Number(raw.budget || 6800), 800, 200000),
     priority: ["balanced", "cheap", "fast", "comfort"].includes(raw.priority) ? raw.priority : "balanced",

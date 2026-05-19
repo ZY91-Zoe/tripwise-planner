@@ -78,16 +78,21 @@
               <input
                 id="destination-input"
                 type="text"
-                placeholder="输入一个或多个城市，按 Enter 添加，例如 广州、深圳、澳门"
+                placeholder="输入一个或多个城市，例如 广州、深圳、澳门"
                 autocomplete="off"
               />
             </div>
-            <small class="field-help">可一次输入多个目的地，用顿号、逗号或空格分隔。</small>
+            <small class="field-help">可一次输入多个目的地，用顿号、逗号或空格分隔；直接点生成也会识别。</small>
           </label>
 
           <label>
             <span>已定酒店/住宿名</span>
             <input id="hotel-name" name="hotelName" placeholder="可选，例如 喀什古城丽枫酒店" autocomplete="off" />
+          </label>
+
+          <label>
+            <span>希望住宿区域</span>
+            <input id="hotel-area" name="hotelArea" placeholder="可选，例如 西湖边 / 大运河附近 / 地铁口附近" autocomplete="off" />
           </label>
 
           <div class="field-row">
